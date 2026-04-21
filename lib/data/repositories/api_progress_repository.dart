@@ -2,9 +2,13 @@ import 'package:oi_coach/core/models/models.dart';
 import 'package:oi_coach/data/services/api_client.dart';
 
 class ApiProgressRepository {
+  final ApiClient _apiClient;
+
+  ApiProgressRepository(this._apiClient);
+
   /// Gets progress comparison entries from the backend.
   Future<List<ExerciseProgressEntry>> getProgress() async {
-    final data = await ApiClient.get('/progress');
+    final data = await _apiClient.get('/progress');
     final entries = data['entries'] as List<dynamic>;
     return entries
         .map(

@@ -5,7 +5,7 @@ const DietLog = require('../models/Diet');
 router.get('/', async (req, res) => {
   try {
     const { date } = req.query;
-    const filter = {};
+    const filter = { userId: req.userId };
     if (date) {
       const d = new Date(date);
       filter.date = { $gte: d, $lt: new Date(d.getTime() + 86400000) };
@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
 // POST /api/diet
 router.post('/', async (req, res) => {
   try {
-    const log = await DietLog.create(req.body);
+    const log = await DietLog.create({ ...req.body, userId: req.userId });
     res.status(201).json(log);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -30,12 +30,16 @@ router.post('/', async (req, res) => {
 // PUT /api/diet/:id
 router.put('/:id', async (req, res) => {
   try {
-    const log = await DietLog.findByIdAndUpdate(req.params.id, req.body, {
+    const log = await DietLog.findById(req.params.id);
+    if (!log) return res.status(404).json({ error: 'Not found' });
+    if (log.userId.toString() !== req.userId) {
+      return res.status(403).json({ message: 'Acesso negado' });
+    }
+    const updated = await DietLog.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true,
     });
-    if (!log) return res.status(404).json({ error: 'Not found' });
-    res.json(log);
+    res.json(updated);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

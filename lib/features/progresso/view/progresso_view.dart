@@ -2,32 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:oi_coach/app/theme/app_colors.dart';
 import 'package:oi_coach/app/theme/app_text_styles.dart';
 import 'package:oi_coach/core/models/models.dart';
-import 'package:oi_coach/data/mock_data.dart';
 import 'package:oi_coach/data/repositories/api_progress_repository.dart';
+import 'package:oi_coach/data/services/api_client.dart';
+import 'package:oi_coach/data/services/token_service.dart';
 import 'package:oi_coach/shared/widgets/widgets.dart';
-
-/// Builds mock ExerciseProgressEntry list as fallback.
-List<ExerciseProgressEntry> _buildMockProgressEntries() {
-  final allExercises = workoutPlan.expand((d) => d.exercises).toList();
-  final entries = <ExerciseProgressEntry>[];
-  for (final ex in allExercises) {
-    if (!lastWeekResults.containsKey(ex.id)) continue;
-    final sets = lastWeekResults[ex.id]!;
-    final prevW = sets.map((s) => s.weight).reduce((a, b) => a > b ? a : b);
-    final prevR = sets.map((s) => s.reps).reduce((a, b) => a > b ? a : b);
-    entries.add(
-      ExerciseProgressEntry(
-        exerciseId: ex.id,
-        exerciseName: ex.name,
-        previousWeight: prevW,
-        previousReps: prevR,
-        currentWeight: prevW + 2.5,
-        currentReps: prevR,
-      ),
-    );
-  }
-  return entries;
-}
 
 class ProgressoView extends StatefulWidget {
   const ProgressoView({super.key});
@@ -37,33 +15,73 @@ class ProgressoView extends StatefulWidget {
 }
 
 class _ProgressoViewState extends State<ProgressoView> {
-  final _repo = ApiProgressRepository();
+  late final ApiProgressRepository _repo;
   List<ExerciseProgressEntry> _entries = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
+    _repo = ApiProgressRepository(ApiClient(TokenService()));
     _load();
   }
 
   Future<void> _load() async {
+    setState(() => _isLoading = true);
     try {
       final apiEntries = await _repo.getProgress();
       setState(() {
-        _entries = apiEntries.isNotEmpty
-            ? apiEntries
-            : _buildMockProgressEntries();
+        _entries = apiEntries;
+        _isLoading = false;
       });
     } catch (_) {
       setState(() {
-        _entries = _buildMockProgressEntries();
+        _entries = [];
+        _isLoading = false;
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const SafePage(child: Center(child: CircularProgressIndicator()));
+    }
+
     final entries = _entries;
+
+    if (entries.isEmpty) {
+      return SafePage(
+        child: ListView(
+          children: [
+            PageHeader(
+              eyebrow: 'Comparativo semanal',
+              title: 'Progresso de carga + reps',
+              description:
+                  'Cada exercício é comparado com a semana anterior. Verde = progressão (carga OU reps). Vermelho = regressão (ambos).',
+              action: ApexButton(
+                label: '↻ Atualizar',
+                variant: ApexButtonVariant.outline,
+                onPressed: _load,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ApexCard(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 32),
+                  child: Text(
+                    'Nenhum dado de progresso disponível',
+                    style: AppTextStyles.body(color: AppColors.mutedForeground),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final weightProgressionCount = entries
         .where((e) => e.weightDelta > 0)
         .length;
@@ -80,6 +98,7 @@ class _ProgressoViewState extends State<ProgressoView> {
             action: ApexButton(
               label: '↻ Atualizar',
               variant: ApexButtonVariant.outline,
+              onPressed: _load,
             ),
           ),
 

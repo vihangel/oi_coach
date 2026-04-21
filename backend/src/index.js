@@ -3,11 +3,15 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 
+const authRoutes = require('./routes/auth');
 const workoutRoutes = require('./routes/workouts');
 const dietRoutes = require('./routes/diet');
 const progressRoutes = require('./routes/progress');
 const activityRoutes = require('./routes/activities');
 const weightRoutes = require('./routes/weight');
+const workoutPlanRoutes = require('./routes/workoutPlans');
+const dietPlanRoutes = require('./routes/dietPlans');
+const authMiddleware = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,12 +22,17 @@ app.use(express.json());
 // Health check
 app.get('/health', (_, res) => res.json({ status: 'ok' }));
 
-// Routes
-app.use('/api/workouts', workoutRoutes);
-app.use('/api/diet', dietRoutes);
-app.use('/api/progress', progressRoutes);
-app.use('/api/activities', activityRoutes);
-app.use('/api/weight', weightRoutes);
+// Auth routes (public, no middleware)
+app.use('/api/auth', authRoutes);
+
+// Protected routes (require auth)
+app.use('/api/workouts', authMiddleware, workoutRoutes);
+app.use('/api/diet', authMiddleware, dietRoutes);
+app.use('/api/workout-plans', authMiddleware, workoutPlanRoutes);
+app.use('/api/diet-plans', authMiddleware, dietPlanRoutes);
+app.use('/api/activities', authMiddleware, activityRoutes);
+app.use('/api/weight', authMiddleware, weightRoutes);
+app.use('/api/progress', authMiddleware, progressRoutes);
 
 mongoose
   .connect(process.env.MONGODB_URI)

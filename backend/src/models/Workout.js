@@ -13,6 +13,7 @@ const exerciseLogSchema = new mongoose.Schema({
 }, { _id: false });
 
 const workoutLogSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   date: { type: Date, required: true },
   workoutDayId: { type: String, required: true },
   workoutName: { type: String, required: true },
@@ -21,5 +22,6 @@ const workoutLogSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 workoutLogSchema.index({ date: -1 });
+workoutLogSchema.index({ userId: 1 });
 
 module.exports = mongoose.model('WorkoutLog', workoutLogSchema);

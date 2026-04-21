@@ -1,6 +1,10 @@
 import 'package:oi_coach/data/services/api_client.dart';
 
 class ApiWorkoutRepository {
+  final ApiClient _apiClient;
+
+  ApiWorkoutRepository(this._apiClient);
+
   /// Saves a workout session to the backend.
   Future<Map<String, dynamic>> saveWorkout({
     required DateTime date,
@@ -9,7 +13,7 @@ class ApiWorkoutRepository {
     required String focus,
     required List<Map<String, dynamic>> exercises,
   }) async {
-    return await ApiClient.post('/workouts', {
+    return await _apiClient.post('/workouts', {
       'date': date.toIso8601String(),
       'workoutDayId': workoutDayId,
       'workoutName': workoutName,
@@ -24,11 +28,11 @@ class ApiWorkoutRepository {
     if (date != null) {
       params['date'] = date.toIso8601String().substring(0, 10);
     }
-    return await ApiClient.get('/workouts', queryParams: params);
+    return await _apiClient.get('/workouts', queryParams: params);
   }
 
   /// Gets last 2 weeks of workouts for progress comparison.
   Future<List<dynamic>> getLatestWorkouts() async {
-    return await ApiClient.get('/workouts/latest');
+    return await _apiClient.get('/workouts/latest');
   }
 }

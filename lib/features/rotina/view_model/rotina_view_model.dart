@@ -1,17 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:oi_coach/core/models/models.dart';
-import 'package:oi_coach/data/mock_data.dart';
 import 'package:oi_coach/data/repositories/api_activity_repository.dart';
+import 'package:oi_coach/data/repositories/api_diet_plan_repository.dart';
 import 'package:oi_coach/data/repositories/api_diet_repository.dart';
+import 'package:oi_coach/data/repositories/api_workout_plan_repository.dart';
 import 'package:oi_coach/data/repositories/api_workout_repository.dart';
+import 'package:oi_coach/data/services/api_client.dart';
+import 'package:oi_coach/data/services/token_service.dart';
 
 class RotinaViewModel extends ChangeNotifier {
-  final _workoutRepo = ApiWorkoutRepository();
-  final _dietRepo = ApiDietRepository();
-  final _activityRepo = ApiActivityRepository();
+  late final ApiWorkoutRepository _workoutRepo;
+  late final ApiDietRepository _dietRepo;
+  late final ApiActivityRepository _activityRepo;
+  late final ApiWorkoutPlanRepository _workoutPlanRepo;
+  late final ApiDietPlanRepository _dietPlanRepo;
+
+  // --- Loading / empty state ---
+  bool _isLoading = true;
+  bool _isEmpty = false;
+  bool get isLoading => _isLoading;
+  bool get isEmpty => _isEmpty;
 
   // --- Training state ---
-  final WorkoutDay day = workoutPlan[2]; // Treino C demo
+  WorkoutDay? _day;
+  WorkoutDay? get day => _day;
+  List<DietMeal> _dietPlan = [];
+  List<DietMeal> get dietPlan => _dietPlan;
+  Map<String, List<ExerciseSet>> _lastWeekResults = {};
+
   final Map<String, bool> _confirmed = {};
   final Map<String, List<SetInput>> _sets = {};
 
@@ -37,21 +53,173 @@ class RotinaViewModel extends ChangeNotifier {
   bool get saving => _saving;
   String? get error => _error;
 
-  RotinaViewModel() {
-    for (final ex in day.exercises) {
-      _confirmed[ex.id] = true;
-      final last = lastWeekResults[ex.id] ?? [];
-      _sets[ex.id] = List.generate(ex.targetSets, (i) {
-        final lastSet = i < last.length ? last[i] : null;
-        final weight = lastSet != null ? lastSet.weight + 2.5 : ex.targetWeight;
-        final reps = lastSet?.reps ?? int.parse(ex.targetReps.split('-')[0]);
-        return SetInput(weight: weight, reps: reps);
-      });
+  RotinaViewModel({ApiClient? apiClient}) {
+    final client = apiClient ?? ApiClient(TokenService());
+    _workoutRepo = ApiWorkoutRepository(client);
+    _dietRepo = ApiDietRepository(client);
+    _activityRepo = ApiActivityRepository(client);
+    _workoutPlanRepo = ApiWorkoutPlanRepository(client);
+    _dietPlanRepo = ApiDietPlanRepository(client);
+    loadData();
+  }
+
+  /// Fetches workout plan, diet plan, and last week results from the API.
+  Future<void> loadData() async {
+    _isLoading = true;
+    _isEmpty = false;
+    notifyListeners();
+
+    try {
+      // Fetch workout plan, diet plan, and latest workouts in parallel
+      final results = await Future.wait([
+        _workoutPlanRepo.getWorkoutPlans(),
+        _dietPlanRepo.getDietPlans(),
+        _workoutRepo.getLatestWorkouts(),
+      ]);
+
+      final workoutPlans = results[0];
+      final dietPlans = results[1];
+      final latestWorkouts = results[2];
+
+      // Parse workout plan — pick today's workout day
+      final List<WorkoutDay> days = _parseWorkoutDays(workoutPlans);
+      final List<DietMeal> meals = _parseDietMeals(dietPlans);
+
+      if (days.isEmpty && meals.isEmpty) {
+        _isEmpty = true;
+        _isLoading = false;
+        notifyListeners();
+        return;
+      }
+
+      // Pick today's workout day based on weekday name
+      _day = _pickTodaysWorkout(days);
+      _dietPlan = meals;
+      _lastWeekResults = _parseLastWeekResults(latestWorkouts);
+
+      // Initialize training state from API data
+      if (_day != null) {
+        for (final ex in _day!.exercises) {
+          _confirmed[ex.id] = true;
+          final last = _lastWeekResults[ex.id] ?? [];
+          _sets[ex.id] = List.generate(ex.targetSets, (i) {
+            final lastSet = i < last.length ? last[i] : null;
+            final weight = lastSet != null
+                ? lastSet.weight + 2.5
+                : ex.targetWeight;
+            final reps =
+                lastSet?.reps ?? int.parse(ex.targetReps.split('-')[0]);
+            return SetInput(weight: weight, reps: reps);
+          });
+        }
+      }
+
+      // Initialize diet check-ins
+      for (final m in _dietPlan) {
+        _checkIns[m.id] = MealCheckIn(mealId: m.id, status: MealStatus.seguiu);
+      }
+
+      _isLoading = false;
+      notifyListeners();
+
+      // Load activities in background
+      _loadActivitiesFromApi();
+    } catch (_) {
+      _isLoading = false;
+      _isEmpty = true;
+      notifyListeners();
     }
-    for (final m in dietPlan) {
-      _checkIns[m.id] = MealCheckIn(mealId: m.id, status: MealStatus.seguiu);
+  }
+
+  List<WorkoutDay> _parseWorkoutDays(List<dynamic> workoutPlans) {
+    if (workoutPlans.isEmpty) return [];
+    // Use the first (most recent) workout plan
+    final plan = workoutPlans[0] as Map<String, dynamic>;
+    final daysJson = plan['days'] as List<dynamic>? ?? [];
+    return daysJson.map((d) {
+      final dayMap = d as Map<String, dynamic>;
+      final exercisesJson = dayMap['exercises'] as List<dynamic>? ?? [];
+      return WorkoutDay(
+        id: dayMap['id'] ?? '',
+        name: dayMap['name'] ?? '',
+        focus: dayMap['focus'] ?? '',
+        day: dayMap['day'] ?? '',
+        exercises: exercisesJson.map((e) {
+          final exMap = e as Map<String, dynamic>;
+          return Exercise(
+            id: exMap['id'] ?? '',
+            order: exMap['order'] ?? 0,
+            name: exMap['name'] ?? '',
+            targetSets: exMap['targetSets'] ?? 0,
+            targetReps: (exMap['targetReps'] ?? '0').toString(),
+            targetWeight: (exMap['targetWeight'] ?? 0).toDouble(),
+          );
+        }).toList(),
+      );
+    }).toList();
+  }
+
+  List<DietMeal> _parseDietMeals(List<dynamic> dietPlans) {
+    if (dietPlans.isEmpty) return [];
+    // Use the first (most recent) diet plan
+    final plan = dietPlans[0] as Map<String, dynamic>;
+    final mealsJson = plan['meals'] as List<dynamic>? ?? [];
+    return mealsJson.map((m) {
+      final mealMap = m as Map<String, dynamic>;
+      return DietMeal(
+        id: mealMap['id'] ?? '',
+        name: mealMap['name'] ?? '',
+        time: mealMap['time'] ?? '',
+        description: mealMap['description'] ?? '',
+        kcal: mealMap['kcal'] ?? 0,
+      );
+    }).toList();
+  }
+
+  Map<String, List<ExerciseSet>> _parseLastWeekResults(
+    List<dynamic> latestWorkouts,
+  ) {
+    final results = <String, List<ExerciseSet>>{};
+    for (final log in latestWorkouts) {
+      final logMap = log as Map<String, dynamic>;
+      final exercises = logMap['exercises'] as List<dynamic>? ?? [];
+      for (final ex in exercises) {
+        final exMap = ex as Map<String, dynamic>;
+        final exerciseId = exMap['exerciseId'] as String? ?? '';
+        if (exerciseId.isEmpty) continue;
+        // Only keep the first (most recent) result per exercise
+        if (results.containsKey(exerciseId)) continue;
+        final setsJson = exMap['sets'] as List<dynamic>? ?? [];
+        results[exerciseId] = setsJson.map((s) {
+          final sMap = s as Map<String, dynamic>;
+          return ExerciseSet(
+            reps: sMap['reps'] ?? 0,
+            weight: (sMap['weight'] ?? 0).toDouble(),
+          );
+        }).toList();
+      }
     }
-    _loadActivitiesFromApi();
+    return results;
+  }
+
+  WorkoutDay? _pickTodaysWorkout(List<WorkoutDay> days) {
+    if (days.isEmpty) return null;
+    final weekdayNames = {
+      1: 'Segunda',
+      2: 'Terça',
+      3: 'Quarta',
+      4: 'Quinta',
+      5: 'Sexta',
+      6: 'Sábado',
+      7: 'Domingo',
+    };
+    final todayName = weekdayNames[DateTime.now().weekday] ?? '';
+    // Try to find a workout for today's weekday
+    for (final d in days) {
+      if (d.day.toLowerCase() == todayName.toLowerCase()) return d;
+    }
+    // Fallback: return the first day
+    return days.first;
   }
 
   Future<void> _loadActivitiesFromApi() async {
@@ -89,7 +257,7 @@ class RotinaViewModel extends ChangeNotifier {
   }
 
   String lastWeekSummary(String exId) {
-    final last = lastWeekResults[exId];
+    final last = _lastWeekResults[exId];
     if (last == null || last.isEmpty) return 'Sem registro';
     final maxReps = last.map((s) => s.reps).reduce((a, b) => a > b ? a : b);
     final maxWeight = last.map((s) => s.weight).reduce((a, b) => a > b ? a : b);
@@ -97,7 +265,7 @@ class RotinaViewModel extends ChangeNotifier {
   }
 
   bool isProgressed(String exId, int setIndex) {
-    final last = lastWeekResults[exId];
+    final last = _lastWeekResults[exId];
     if (last == null || setIndex >= last.length) return false;
     final current = _sets[exId]?[setIndex];
     if (current == null) return false;
@@ -206,6 +374,7 @@ class RotinaViewModel extends ChangeNotifier {
   // --- Save full session to API ---
 
   Future<void> saveSession() async {
+    if (_day == null) return;
     _saving = true;
     _error = null;
     notifyListeners();
@@ -214,10 +383,10 @@ class RotinaViewModel extends ChangeNotifier {
       // Save workout
       await _workoutRepo.saveWorkout(
         date: DateTime.now(),
-        workoutDayId: day.id,
-        workoutName: day.name,
-        focus: day.focus,
-        exercises: day.exercises.map((ex) {
+        workoutDayId: _day!.id,
+        workoutName: _day!.name,
+        focus: _day!.focus,
+        exercises: _day!.exercises.map((ex) {
           final sets = setsFor(ex.id);
           return {
             'exerciseId': ex.id,
@@ -262,10 +431,11 @@ class RotinaViewModel extends ChangeNotifier {
   // --- Computed ---
 
   bool get isDailyRoutineComplete {
-    final allExercisesConfirmed = day.exercises.every(
+    if (_day == null) return false;
+    final allExercisesConfirmed = _day!.exercises.every(
       (ex) => _confirmed[ex.id] == true,
     );
-    final allMealsChecked = dietPlan.every(
+    final allMealsChecked = _dietPlan.every(
       (meal) => _checkIns.containsKey(meal.id),
     );
     return allExercisesConfirmed && allMealsChecked;

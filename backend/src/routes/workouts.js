@@ -5,7 +5,7 @@ const WorkoutLog = require('../models/Workout');
 router.get('/', async (req, res) => {
   try {
     const { date } = req.query;
-    const filter = {};
+    const filter = { userId: req.userId };
     if (date) {
       const d = new Date(date);
       filter.date = { $gte: d, $lt: new Date(d.getTime() + 86400000) };
@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
 // POST /api/workouts
 router.post('/', async (req, res) => {
   try {
-    const log = await WorkoutLog.create(req.body);
+    const log = await WorkoutLog.create({ ...req.body, userId: req.userId });
     res.status(201).json(log);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -31,7 +31,7 @@ router.post('/', async (req, res) => {
 router.get('/latest', async (req, res) => {
   try {
     const twoWeeksAgo = new Date(Date.now() - 14 * 86400000);
-    const logs = await WorkoutLog.find({ date: { $gte: twoWeeksAgo } })
+    const logs = await WorkoutLog.find({ userId: req.userId, date: { $gte: twoWeeksAgo } })
       .sort({ date: -1 });
     res.json(logs);
   } catch (err) {

@@ -1,9 +1,13 @@
 import 'package:oi_coach/data/services/api_client.dart';
 
 class ApiWeightRepository {
+  final ApiClient _apiClient;
+
+  ApiWeightRepository(this._apiClient);
+
   /// Gets the latest weight entry and previous for delta calculation.
   Future<({double? current, double? previous})> getLatest() async {
-    final data = await ApiClient.get('/weight/latest');
+    final data = await _apiClient.get('/weight/latest');
     final current = data['current'] != null
         ? (data['current']['value'] as num).toDouble()
         : null;
@@ -15,7 +19,7 @@ class ApiWeightRepository {
 
   /// Saves a new weight entry.
   Future<void> saveWeight(double value, {DateTime? date}) async {
-    await ApiClient.post('/weight', {
+    await _apiClient.post('/weight', {
       'value': value,
       'date': (date ?? DateTime.now()).toIso8601String(),
     });
@@ -23,7 +27,7 @@ class ApiWeightRepository {
 
   /// Gets weight history.
   Future<List<dynamic>> getHistory({int limit = 30}) async {
-    return await ApiClient.get(
+    return await _apiClient.get(
       '/weight/history',
       queryParams: {'limit': limit.toString()},
     );

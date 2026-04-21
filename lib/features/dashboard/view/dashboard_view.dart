@@ -2,15 +2,44 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:oi_coach/app/theme/app_colors.dart';
 import 'package:oi_coach/app/theme/app_text_styles.dart';
-import 'package:oi_coach/data/mock_data.dart';
+import 'package:oi_coach/features/dashboard/view_model/dashboard_view_model.dart';
 import 'package:oi_coach/shared/widgets/widgets.dart';
 
-class DashboardView extends StatelessWidget {
+class DashboardView extends StatefulWidget {
   const DashboardView({super.key});
 
   @override
+  State<DashboardView> createState() => _DashboardViewState();
+}
+
+class _DashboardViewState extends State<DashboardView> {
+  late final DashboardViewModel _viewModel;
+
+  @override
+  void initState() {
+    super.initState();
+    _viewModel = DashboardViewModel();
+    _viewModel.addListener(_onViewModelChanged);
+  }
+
+  void _onViewModelChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _viewModel.removeListener(_onViewModelChanged);
+    _viewModel.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final today = workoutPlan[2];
+    if (_viewModel.isLoading) {
+      return const SafePage(child: Center(child: CircularProgressIndicator()));
+    }
+
+    final today = _viewModel.todayWorkout;
 
     return SafePage(
       child: ListView(
@@ -25,19 +54,27 @@ class DashboardView extends StatelessWidget {
               onPressed: () => context.go('/rotina'),
             ),
           ),
-          MetricCard(
-            label: 'Treino de hoje',
-            value: today.focus,
-            sub: '${today.exercises.length} exercícios',
-            highlight: true,
-          ),
+          if (today != null)
+            MetricCard(
+              label: 'Treino de hoje',
+              value: today.focus,
+              sub: '${today.exercises.length} exercícios',
+              highlight: true,
+            )
+          else
+            const MetricCard(
+              label: 'Treino de hoje',
+              value: '—',
+              sub: 'Nenhum treino planejado para hoje',
+              highlight: false,
+            ),
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(
+              const Expanded(
                 child: MetricCard(
                   label: 'Dieta semanal',
-                  value: '${weeklySummary.dietAdherence}%',
+                  value: '—',
                   sub: 'Aderência',
                 ),
               ),
@@ -45,8 +82,12 @@ class DashboardView extends StatelessWidget {
               Expanded(
                 child: MetricCard(
                   label: 'Peso jejum',
-                  value: '${weeklySummary.weightFasted}kg',
-                  sub: 'Atualizado domingo',
+                  value: _viewModel.currentWeight != null
+                      ? '${_viewModel.currentWeight}kg'
+                      : '—',
+                  sub: _viewModel.currentWeight != null
+                      ? 'Último registro'
+                      : 'Sem registro',
                 ),
               ),
             ],

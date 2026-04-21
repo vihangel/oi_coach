@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:oi_coach/app/theme/app_colors.dart';
 import 'package:oi_coach/app/theme/app_text_styles.dart';
 import 'package:oi_coach/core/models/models.dart';
-import 'package:oi_coach/data/mock_data.dart';
 import 'package:oi_coach/shared/widgets/widgets.dart';
 
 import '../view_model/rotina_view_model.dart';
@@ -35,12 +34,35 @@ class _RotinaViewState extends State<RotinaView> {
 
   @override
   Widget build(BuildContext context) {
+    if (_vm.isLoading) {
+      return const SafePage(
+        child: Center(child: CircularProgressIndicator(color: AppColors.volt)),
+      );
+    }
+
+    if (_vm.isEmpty) {
+      return SafePage(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text(
+              'Configure sua ficha de treino e dieta para iniciar',
+              style: AppTextStyles.body(color: AppColors.mutedForeground),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final day = _vm.day!;
+
     return SafePage(
       child: ListView(
         children: [
           PageHeader(
             eyebrow: 'Rotina diária',
-            title: '${_vm.day.name} — ${_vm.day.focus}',
+            title: '${day.name} — ${day.focus}',
             description:
                 'Treino, dieta e atividades extras em um só lugar. Complete tudo para fechar o dia.',
             action: ApexButton(
@@ -64,14 +86,14 @@ class _RotinaViewState extends State<RotinaView> {
           // --- TRAINING SECTION ---
           _buildSectionTitle('TREINO'),
           const SizedBox(height: 12),
-          ..._vm.day.exercises.map(_buildExerciseCard),
+          ...day.exercises.map(_buildExerciseCard),
 
           const SizedBox(height: 32),
 
           // --- DIET SECTION ---
           _buildSectionTitle('DIETA'),
           const SizedBox(height: 12),
-          ...dietPlan.map(_buildMealCard),
+          ..._vm.dietPlan.map(_buildMealCard),
           const SizedBox(height: 16),
           _buildFreeMealsSection(),
           const SizedBox(height: 16),

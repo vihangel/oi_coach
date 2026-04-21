@@ -4,10 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:oi_coach/app/theme/app_colors.dart';
 import 'package:oi_coach/app/theme/app_text_styles.dart';
 import 'package:oi_coach/core/models/extra_activity.dart';
-import 'package:oi_coach/data/mock_data.dart';
 import 'package:oi_coach/data/repositories/api_activity_repository.dart';
 import 'package:oi_coach/data/repositories/api_weight_repository.dart';
 import 'package:oi_coach/data/repositories/weight_repository.dart';
+import 'package:oi_coach/data/services/api_client.dart';
+import 'package:oi_coach/data/services/token_service.dart';
 import 'package:oi_coach/shared/widgets/widgets.dart';
 
 class RelatorioView extends StatefulWidget {
@@ -19,11 +20,12 @@ class RelatorioView extends StatefulWidget {
 
 class _RelatorioViewState extends State<RelatorioView> {
   bool _copied = false;
+  bool _isLoading = true;
   final _weightController = TextEditingController();
   final _weightFormKey = GlobalKey<FormState>();
   final _localWeightRepo = WeightRepository();
-  final _apiWeightRepo = ApiWeightRepository();
-  final _apiActivityRepo = ApiActivityRepository();
+  late final ApiWeightRepository _apiWeightRepo;
+  late final ApiActivityRepository _apiActivityRepo;
 
   double? _currentWeight;
   double? _previousWeight;
@@ -33,14 +35,22 @@ class _RelatorioViewState extends State<RelatorioView> {
   @override
   void initState() {
     super.initState();
-    _loadWeight();
-    _loadActivities();
+    final client = ApiClient(TokenService());
+    _apiWeightRepo = ApiWeightRepository(client);
+    _apiActivityRepo = ApiActivityRepository(client);
+    _loadData();
   }
 
   @override
   void dispose() {
     _weightController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    await Future.wait([_loadWeight(), _loadActivities()]);
+    setState(() => _isLoading = false);
   }
 
   Future<void> _loadWeight() async {
@@ -119,6 +129,9 @@ class _RelatorioViewState extends State<RelatorioView> {
     return null;
   }
 
+  /// Whether we have enough data to generate a meaningful report.
+  bool get _hasReportData => _currentWeight != null;
+
   String get _activitiesText {
     if (_extraActivities.isEmpty) return '';
     final lines = _extraActivities
@@ -131,21 +144,17 @@ class _RelatorioViewState extends State<RelatorioView> {
   }
 
   String get _report {
-    final displayWeight = _currentWeight ?? weeklySummary.weightFasted;
-    final progressLines = weeklySummary.progress
-        .map((p) => '  • ${p.exercise}: ${p.from} → ${p.to}')
-        .join('\n');
-    return '''📊 RELATÓRIO SEMANAL — Semana 4
+    final weightStr = _currentWeight != null
+        ? '${_currentWeight!.toStringAsFixed(1)} kg'
+        : '—';
+    return '''📊 RELATÓRIO SEMANAL
 
-⚖️  Peso em jejum: $displayWeight kg
-🍽️  Dieta: ${weeklySummary.dietAdherence}% seguida
-🍕 Refeição livre: ${weeklySummary.freeMeal.day} (${weeklySummary.freeMeal.description})
-🏋️  Treinos realizados: ${weeklySummary.trainingsDone} de ${weeklySummary.trainingsPlanned} dias
+⚖️  Peso em jejum: $weightStr
+🍽️  Dieta: —
+🍕 Refeição livre: —
+🏋️  Treinos realizados: —$_activitiesText
 
-📈 Progresso de carga:
-$progressLines$_activitiesText
-
-Próxima meta: manter sobrecarga progressiva e fechar 4/4 treinos.''';
+Próxima meta: manter sobrecarga progressiva e fechar os treinos.''';
   }
 
   Future<void> _copy() async {
@@ -176,7 +185,7 @@ Próxima meta: manter sobrecarga progressiva e fechar 4/4 treinos.''';
                 'Texto pronto para copiar e enviar. Atualizado automaticamente com base nos seus registros.',
             action: ApexButton(
               label: _copied ? '✓ Copiado' : 'Copiar relatório',
-              onPressed: _copy,
+              onPressed: _hasReportData ? _copy : null,
             ),
           ),
 
@@ -185,67 +194,76 @@ Próxima meta: manter sobrecarga progressiva e fechar 4/4 treinos.''';
 
           const SizedBox(height: 16),
 
-          // Report card
-          ApexCard(
-            padding: EdgeInsets.zero,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          // Loading state
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 48),
+              child: Center(
+                child: CircularProgressIndicator(color: AppColors.volt),
+              ),
+            )
+          // Empty state — insufficient data
+          else if (!_hasReportData)
+            _buildEmptyState()
+          // Report content
+          else ...[
+            // Report card
+            ApexCard(
+              padding: EdgeInsets.zero,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(height: 3, color: AppColors.volt),
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      _report,
+                      style: AppTextStyles.body().copyWith(height: 1.6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Metrics
+            Row(
               children: [
-                Container(height: 3, color: AppColors.volt),
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    _report,
-                    style: AppTextStyles.body().copyWith(height: 1.6),
+                Expanded(
+                  child: MetricCard(
+                    label: 'Peso jejum',
+                    value: _currentWeight != null
+                        ? '${_currentWeight!.toStringAsFixed(1)} kg'
+                        : '—',
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: MetricCard(label: 'Aderência dieta', value: '—'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: MetricCard(label: 'Treinos', value: '—'),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: MetricCard(
+                    label: 'Exercícios PR',
+                    value: '—',
+                    highlight: true,
                   ),
                 ),
               ],
             ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Metrics
-          Row(
-            children: [
-              Expanded(
-                child: MetricCard(
-                  label: 'Peso jejum',
-                  value: '${_currentWeight ?? weeklySummary.weightFasted} kg',
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: MetricCard(
-                  label: 'Aderência dieta',
-                  value: '${weeklySummary.dietAdherence}%',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: MetricCard(
-                  label: 'Treinos',
-                  value:
-                      '${weeklySummary.trainingsDone}/${weeklySummary.trainingsPlanned}',
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: MetricCard(
-                  label: 'Exercícios PR',
-                  value: '${weeklySummary.progress.length}',
-                  highlight: true,
-                ),
-              ),
-            ],
-          ),
+          ],
 
           // Extra activities section
-          if (_extraActivities.isNotEmpty) ...[
+          if (!_isLoading && _extraActivities.isNotEmpty) ...[
             const SizedBox(height: 24),
             Text('ATIVIDADES EXTRAS', style: AppTextStyles.monoLabel()),
             const SizedBox(height: 12),
@@ -257,6 +275,35 @@ Próxima meta: manter sobrecarga progressiva e fechar 4/4 treinos.''';
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48),
+      child: ApexCard(
+        child: Column(
+          children: [
+            const Icon(
+              Icons.insert_chart_outlined,
+              color: AppColors.mutedForeground,
+              size: 48,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Dados insuficientes para gerar o relatório',
+              style: AppTextStyles.body(color: AppColors.foreground),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Registre seu peso em jejum acima para começar.',
+              style: AppTextStyles.bodySmall(),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }

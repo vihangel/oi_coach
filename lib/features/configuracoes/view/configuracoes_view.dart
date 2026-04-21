@@ -2,11 +2,35 @@ import 'package:flutter/material.dart';
 import 'package:oi_coach/app/theme/app_colors.dart';
 import 'package:oi_coach/app/theme/app_text_styles.dart';
 import 'package:oi_coach/core/models/models.dart';
-import 'package:oi_coach/data/mock_data.dart';
+import 'package:oi_coach/features/auth/view_model/auth_view_model.dart';
 import 'package:oi_coach/shared/widgets/widgets.dart';
 
+const _integrations = <IntegrationAccount>[
+  IntegrationAccount(
+    id: 'garmin',
+    name: 'Garmin Connect',
+    description:
+        'Importe automaticamente séries, reps e cargas dos seus treinos registrados.',
+    status: IntegrationStatus.disconnected,
+  ),
+  IntegrationAccount(
+    id: 'apple_health',
+    name: 'Apple Health',
+    description: 'Sincronize peso e medidas corporais.',
+    status: IntegrationStatus.disconnected,
+  ),
+  IntegrationAccount(
+    id: 'google_fit',
+    name: 'Google Fit',
+    description: 'Backup automático do histórico de treino.',
+    status: IntegrationStatus.disconnected,
+  ),
+];
+
 class ConfiguracoesView extends StatefulWidget {
-  const ConfiguracoesView({super.key});
+  final AuthViewModel authViewModel;
+
+  const ConfiguracoesView({super.key, required this.authViewModel});
 
   @override
   State<ConfiguracoesView> createState() => _ConfiguracoesViewState();
@@ -29,7 +53,7 @@ class _ConfiguracoesViewState extends State<ConfiguracoesView> {
           ),
 
           // Integrations
-          ...integrations.map(
+          ..._integrations.map(
             (acc) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: ApexCard(
@@ -88,6 +112,31 @@ class _ConfiguracoesViewState extends State<ConfiguracoesView> {
             description: 'Lembretes nos dias planejados.',
             value: _notifications,
             onChanged: (v) => setState(() => _notifications = v),
+          ),
+
+          const SizedBox(height: 32),
+          SizedBox(
+            width: double.infinity,
+            child: GestureDetector(
+              onTap: () => widget.authViewModel.logout(),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: AppColors.destructive.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppColors.destructive.withValues(alpha: 0.3),
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  'SAIR',
+                  style: AppTextStyles.button().copyWith(
+                    color: AppColors.destructive,
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),

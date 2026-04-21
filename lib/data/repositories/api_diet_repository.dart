@@ -1,6 +1,10 @@
 import 'package:oi_coach/data/services/api_client.dart';
 
 class ApiDietRepository {
+  final ApiClient _apiClient;
+
+  ApiDietRepository(this._apiClient);
+
   /// Saves a diet log for the day.
   Future<Map<String, dynamic>> saveDietLog({
     required DateTime date,
@@ -8,7 +12,7 @@ class ApiDietRepository {
     required List<Map<String, dynamic>> freeMeals,
     required List<Map<String, dynamic>> cheatEntries,
   }) async {
-    return await ApiClient.post('/diet', {
+    return await _apiClient.post('/diet', {
       'date': date.toIso8601String(),
       'checkIns': checkIns,
       'freeMeals': freeMeals,
@@ -22,7 +26,7 @@ class ApiDietRepository {
     if (date != null) {
       params['date'] = date.toIso8601String().substring(0, 10);
     }
-    return await ApiClient.get('/diet', queryParams: params);
+    return await _apiClient.get('/diet', queryParams: params);
   }
 
   /// Updates an existing diet log.
@@ -30,6 +34,6 @@ class ApiDietRepository {
     String id,
     Map<String, dynamic> data,
   ) async {
-    return await ApiClient.put('/diet/$id', data);
+    return await _apiClient.put('/diet/$id', data);
   }
 }

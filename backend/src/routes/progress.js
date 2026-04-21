@@ -5,7 +5,7 @@ const WorkoutLog = require('../models/Workout');
 router.get('/', async (req, res) => {
   try {
     const twoWeeksAgo = new Date(Date.now() - 14 * 86400000);
-    const logs = await WorkoutLog.find({ date: { $gte: twoWeeksAgo } })
+    const logs = await WorkoutLog.find({ userId: req.userId, date: { $gte: twoWeeksAgo } })
       .sort({ date: -1 });
 
     if (logs.length < 2) {

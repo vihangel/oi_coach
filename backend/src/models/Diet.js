@@ -16,6 +16,7 @@ const cheatEntrySchema = new mongoose.Schema({
 }, { _id: false });
 
 const dietLogSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   date: { type: Date, required: true },
   checkIns: [mealCheckInSchema],
   freeMeals: [freeMealSchema],
@@ -23,5 +24,6 @@ const dietLogSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 dietLogSchema.index({ date: -1 });
+dietLogSchema.index({ userId: 1 });
 
 module.exports = mongoose.model('DietLog', dietLogSchema);
