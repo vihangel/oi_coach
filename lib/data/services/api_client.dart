@@ -12,8 +12,10 @@ class ApiClient {
   static const _productionUrl = 'https://oicoach-production.up.railway.app/api';
   static const _localUrl = 'http://localhost:3000/api';
 
-  /// Use production URL in release mode, localhost in debug.
-  static String get _baseUrl => kReleaseMode ? _productionUrl : _localUrl;
+  /// Always use production URL. Switch to _localUrl only when running
+  /// the backend locally (uncomment the line below).
+  static String get _baseUrl => _productionUrl;
+  // static String get _baseUrl => kReleaseMode ? _productionUrl : _localUrl;
 
   final TokenService _tokenService;
   final http.Client _client;

@@ -6,6 +6,15 @@
     "configurations": [
         
         {
+            "name": "oi_coach (chrome)",
+            "request": "launch",
+            "type": "dart",
+            "args": [
+                "-d",
+                "chrome"
+            ]
+        },
+        {
             "name": "oi_coach",
             "request": "launch",
             "type": "dart"
