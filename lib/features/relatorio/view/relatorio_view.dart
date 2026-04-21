@@ -5,7 +5,8 @@ import 'package:oi_coach/app/theme/app_colors.dart';
 import 'package:oi_coach/app/theme/app_text_styles.dart';
 import 'package:oi_coach/core/models/extra_activity.dart';
 import 'package:oi_coach/data/mock_data.dart';
-import 'package:oi_coach/data/repositories/activity_repository.dart';
+import 'package:oi_coach/data/repositories/api_activity_repository.dart';
+import 'package:oi_coach/data/repositories/api_weight_repository.dart';
 import 'package:oi_coach/data/repositories/weight_repository.dart';
 import 'package:oi_coach/shared/widgets/widgets.dart';
 
@@ -20,8 +21,9 @@ class _RelatorioViewState extends State<RelatorioView> {
   bool _copied = false;
   final _weightController = TextEditingController();
   final _weightFormKey = GlobalKey<FormState>();
-  final _weightRepo = WeightRepository();
-  final _activityRepo = ActivityRepository();
+  final _localWeightRepo = WeightRepository();
+  final _apiWeightRepo = ApiWeightRepository();
+  final _apiActivityRepo = ApiActivityRepository();
 
   double? _currentWeight;
   double? _previousWeight;
@@ -42,22 +44,51 @@ class _RelatorioViewState extends State<RelatorioView> {
   }
 
   Future<void> _loadWeight() async {
-    final current = await _weightRepo.loadWeight();
-    final previous = await _weightRepo.loadPreviousWeight();
-    setState(() {
-      _currentWeight = current;
-      _previousWeight = previous;
-      if (current != null) {
-        _weightController.text = current.toStringAsFixed(1);
-      }
-    });
+    try {
+      // Try API first
+      final apiData = await _apiWeightRepo.getLatest();
+      setState(() {
+        _currentWeight = apiData.current;
+        _previousWeight = apiData.previous;
+        if (apiData.current != null) {
+          _weightController.text = apiData.current!.toStringAsFixed(1);
+        }
+      });
+    } catch (_) {
+      // Fallback to local
+      final current = await _localWeightRepo.loadWeight();
+      final previous = await _localWeightRepo.loadPreviousWeight();
+      setState(() {
+        _currentWeight = current;
+        _previousWeight = previous;
+        if (current != null) {
+          _weightController.text = current.toStringAsFixed(1);
+        }
+      });
+    }
   }
 
   Future<void> _loadActivities() async {
-    final activities = await _activityRepo.getActivitiesForDay(DateTime.now());
-    setState(() {
-      _extraActivities = activities;
-    });
+    try {
+      final data = await _apiActivityRepo.getActivitiesForDay(DateTime.now());
+      setState(() {
+        _extraActivities = data
+            .map(
+              (item) => ExtraActivity(
+                id: item['_id'] ?? item['id'] ?? '',
+                type: ActivityType.values.byName(item['type']),
+                durationMinutes: item['durationMinutes'],
+                source: ActivitySource.values.byName(
+                  item['source'] ?? 'manual',
+                ),
+                date: DateTime.parse(item['date']),
+              ),
+            )
+            .toList();
+      });
+    } catch (_) {
+      setState(() => _extraActivities = []);
+    }
   }
 
   Future<void> _submitWeight() async {
@@ -71,8 +102,10 @@ class _RelatorioViewState extends State<RelatorioView> {
     }
 
     setState(() => _weightError = null);
-    await _weightRepo.saveWeight(value!);
-    final previous = await _weightRepo.loadPreviousWeight();
+    // Save to both local and API
+    await _localWeightRepo.saveWeight(value!);
+    _apiWeightRepo.saveWeight(value);
+    final previous = await _localWeightRepo.loadPreviousWeight();
     setState(() {
       _previousWeight = previous;
       _currentWeight = value;

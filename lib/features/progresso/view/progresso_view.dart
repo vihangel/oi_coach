@@ -3,88 +3,67 @@ import 'package:oi_coach/app/theme/app_colors.dart';
 import 'package:oi_coach/app/theme/app_text_styles.dart';
 import 'package:oi_coach/core/models/models.dart';
 import 'package:oi_coach/data/mock_data.dart';
+import 'package:oi_coach/data/repositories/api_progress_repository.dart';
 import 'package:oi_coach/shared/widgets/widgets.dart';
 
-/// Builds mock ExerciseProgressEntry list from existing mock data.
-/// Simulates current week = previous + small delta for demonstration.
+/// Builds mock ExerciseProgressEntry list as fallback.
 List<ExerciseProgressEntry> _buildMockProgressEntries() {
   final allExercises = workoutPlan.expand((d) => d.exercises).toList();
   final entries = <ExerciseProgressEntry>[];
-
   for (final ex in allExercises) {
     if (!lastWeekResults.containsKey(ex.id)) continue;
-
     final sets = lastWeekResults[ex.id]!;
-    final previousWeight = sets
-        .map((s) => s.weight)
-        .reduce((a, b) => a > b ? a : b);
-    final previousReps = sets
-        .map((s) => s.reps)
-        .reduce((a, b) => a > b ? a : b);
-
-    // Simulate current week with varied deltas
-    final double weightDelta;
-    final int repsDelta;
-    switch (ex.id) {
-      case 'a1':
-        weightDelta = 2.5;
-        repsDelta = 1;
-      case 'a2':
-        weightDelta = 2.0;
-        repsDelta = 0;
-      case 'a3':
-        weightDelta = 0;
-        repsDelta = 2;
-      case 'a4':
-        weightDelta = 0;
-        repsDelta = 1;
-      case 'b1':
-        weightDelta = 5.0;
-        repsDelta = 0;
-      case 'b2':
-        weightDelta = -2.5;
-        repsDelta = -1;
-      case 'b3':
-        weightDelta = 0;
-        repsDelta = 1;
-      case 'c1':
-        weightDelta = 5.0;
-        repsDelta = 1;
-      case 'c2':
-        weightDelta = 10.0;
-        repsDelta = 0;
-      case 'c3':
-        weightDelta = -5.0;
-        repsDelta = -2;
-      case 'c4':
-        weightDelta = 5.0;
-        repsDelta = 0;
-      default:
-        weightDelta = 2.5;
-        repsDelta = 0;
-    }
-
+    final prevW = sets.map((s) => s.weight).reduce((a, b) => a > b ? a : b);
+    final prevR = sets.map((s) => s.reps).reduce((a, b) => a > b ? a : b);
     entries.add(
       ExerciseProgressEntry(
         exerciseId: ex.id,
         exerciseName: ex.name,
-        previousWeight: previousWeight,
-        previousReps: previousReps,
-        currentWeight: previousWeight + weightDelta,
-        currentReps: previousReps + repsDelta,
+        previousWeight: prevW,
+        previousReps: prevR,
+        currentWeight: prevW + 2.5,
+        currentReps: prevR,
       ),
     );
   }
-
   return entries;
 }
 
-class ProgressoView extends StatelessWidget {
+class ProgressoView extends StatefulWidget {
   const ProgressoView({super.key});
 
   @override
+  State<ProgressoView> createState() => _ProgressoViewState();
+}
+
+class _ProgressoViewState extends State<ProgressoView> {
+  final _repo = ApiProgressRepository();
+  List<ExerciseProgressEntry> _entries = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final apiEntries = await _repo.getProgress();
+      setState(() {
+        _entries = apiEntries.isNotEmpty
+            ? apiEntries
+            : _buildMockProgressEntries();
+      });
+    } catch (_) {
+      setState(() {
+        _entries = _buildMockProgressEntries();
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final entries = _buildMockProgressEntries();
+    final entries = _entries;
     final weightProgressionCount = entries
         .where((e) => e.weightDelta > 0)
         .length;

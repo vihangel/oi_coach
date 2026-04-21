@@ -43,7 +43,20 @@ class _RotinaViewState extends State<RotinaView> {
             title: '${_vm.day.name} — ${_vm.day.focus}',
             description:
                 'Treino, dieta e atividades extras em um só lugar. Complete tudo para fechar o dia.',
+            action: ApexButton(
+              label: _vm.saving ? 'Salvando...' : 'Salvar sessão',
+              onPressed: _vm.saving ? null : () => _vm.saveSession(),
+            ),
           ),
+
+          if (_vm.error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                _vm.error!,
+                style: AppTextStyles.bodySmall(color: AppColors.destructive),
+              ),
+            ),
 
           // Completion indicator
           if (_vm.isDailyRoutineComplete) _buildCompletionBanner(),

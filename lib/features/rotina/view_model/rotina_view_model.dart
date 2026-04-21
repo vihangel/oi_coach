@@ -1,35 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:oi_coach/core/models/models.dart';
 import 'package:oi_coach/data/mock_data.dart';
+import 'package:oi_coach/data/repositories/api_activity_repository.dart';
+import 'package:oi_coach/data/repositories/api_diet_repository.dart';
+import 'package:oi_coach/data/repositories/api_workout_repository.dart';
 
 class RotinaViewModel extends ChangeNotifier {
+  final _workoutRepo = ApiWorkoutRepository();
+  final _dietRepo = ApiDietRepository();
+  final _activityRepo = ApiActivityRepository();
+
   // --- Training state ---
   final WorkoutDay day = workoutPlan[2]; // Treino C demo
-
   final Map<String, bool> _confirmed = {};
-  final Map<String, List<_SetInput>> _sets = {};
+  final Map<String, List<SetInput>> _sets = {};
 
   // --- Diet state ---
   final Map<String, MealCheckIn> _checkIns = {};
-
-  String freeMealDay = 'Domingo';
-  String freeMealDesc = 'Pizza com a família';
   double currentWeight = 58.5;
   double previousWeight = 59.2;
 
-  // --- Free meals state (multiple allowed) ---
-  final List<_FreeMealEntry> _freeMeals = [
-    _FreeMealEntry(day: 'Domingo', description: 'Pizza com a família'),
+  // --- Free meals state ---
+  final List<FreeMealEntry> _freeMeals = [
+    FreeMealEntry(day: 'Domingo', description: 'Pizza com a família'),
   ];
 
   // --- "Chutei o balde" entries ---
-  final List<_CheatEntry> _cheatEntries = [];
+  final List<CheatEntry> _cheatEntries = [];
 
   // --- Extra activities state ---
   final List<ExtraActivity> _extraActivities = [];
 
+  // --- Saving state ---
+  bool _saving = false;
+  String? _error;
+  bool get saving => _saving;
+  String? get error => _error;
+
   RotinaViewModel() {
-    // Initialize training state
     for (final ex in day.exercises) {
       _confirmed[ex.id] = true;
       final last = lastWeekResults[ex.id] ?? [];
@@ -37,13 +45,33 @@ class RotinaViewModel extends ChangeNotifier {
         final lastSet = i < last.length ? last[i] : null;
         final weight = lastSet != null ? lastSet.weight + 2.5 : ex.targetWeight;
         final reps = lastSet?.reps ?? int.parse(ex.targetReps.split('-')[0]);
-        return _SetInput(weight: weight, reps: reps);
+        return SetInput(weight: weight, reps: reps);
       });
     }
-
-    // Initialize diet state
     for (final m in dietPlan) {
       _checkIns[m.id] = MealCheckIn(mealId: m.id, status: MealStatus.seguiu);
+    }
+    _loadActivitiesFromApi();
+  }
+
+  Future<void> _loadActivitiesFromApi() async {
+    try {
+      final data = await _activityRepo.getActivitiesForDay(DateTime.now());
+      _extraActivities.clear();
+      for (final item in data) {
+        _extraActivities.add(
+          ExtraActivity(
+            id: item['_id'] ?? item['id'] ?? '',
+            type: ActivityType.values.byName(item['type']),
+            durationMinutes: item['durationMinutes'],
+            source: ActivitySource.values.byName(item['source'] ?? 'manual'),
+            date: DateTime.parse(item['date']),
+          ),
+        );
+      }
+      notifyListeners();
+    } catch (_) {
+      // Fallback: keep empty list
     }
   }
 
@@ -101,10 +129,10 @@ class RotinaViewModel extends ChangeNotifier {
 
   // --- Free meals methods ---
 
-  List<_FreeMealEntry> get freeMeals => List.unmodifiable(_freeMeals);
+  List<FreeMealEntry> get freeMeals => List.unmodifiable(_freeMeals);
 
   void addFreeMeal() {
-    _freeMeals.add(_FreeMealEntry(day: '', description: ''));
+    _freeMeals.add(FreeMealEntry(day: '', description: ''));
     notifyListeners();
   }
 
@@ -131,16 +159,16 @@ class RotinaViewModel extends ChangeNotifier {
 
   // --- Cheat entries methods ---
 
-  List<_CheatEntry> get cheatEntries => List.unmodifiable(_cheatEntries);
+  List<CheatEntry> get cheatEntries => List.unmodifiable(_cheatEntries);
 
   void addCheatEntry() {
-    _cheatEntries.add(_CheatEntry(description: ''));
+    _cheatEntries.add(CheatEntry(description: ''));
     notifyListeners();
   }
 
   void updateCheatEntry(int index, String description) {
     if (index < _cheatEntries.length) {
-      _cheatEntries[index] = _CheatEntry(description: description);
+      _cheatEntries[index] = CheatEntry(description: description);
       notifyListeners();
     }
   }
@@ -160,16 +188,79 @@ class RotinaViewModel extends ChangeNotifier {
   void addExtraActivity(ExtraActivity activity) {
     _extraActivities.add(activity);
     notifyListeners();
+    // Save to API in background
+    _activityRepo.saveActivity(
+      type: activity.type.name,
+      durationMinutes: activity.durationMinutes,
+      source: activity.source.name,
+      date: activity.date,
+    );
   }
 
   void removeExtraActivity(String activityId) {
     _extraActivities.removeWhere((a) => a.id == activityId);
     notifyListeners();
+    _activityRepo.deleteActivity(activityId);
   }
 
-  // --- Computed: daily routine completion ---
+  // --- Save full session to API ---
 
-  /// Returns true when all exercises are confirmed AND all meals have a check-in.
+  Future<void> saveSession() async {
+    _saving = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      // Save workout
+      await _workoutRepo.saveWorkout(
+        date: DateTime.now(),
+        workoutDayId: day.id,
+        workoutName: day.name,
+        focus: day.focus,
+        exercises: day.exercises.map((ex) {
+          final sets = setsFor(ex.id);
+          return {
+            'exerciseId': ex.id,
+            'exerciseName': ex.name,
+            'sets': sets
+                .map((s) => {'reps': s.reps, 'weight': s.weight})
+                .toList(),
+            'confirmed': isConfirmed(ex.id),
+          };
+        }).toList(),
+      );
+
+      // Save diet
+      await _dietRepo.saveDietLog(
+        date: DateTime.now(),
+        checkIns: _checkIns.values
+            .map(
+              (c) => {
+                'mealId': c.mealId,
+                'status': c.status.name,
+                'note': c.note ?? '',
+              },
+            )
+            .toList(),
+        freeMeals: _freeMeals
+            .map((f) => {'day': f.day, 'description': f.description})
+            .toList(),
+        cheatEntries: _cheatEntries
+            .map((c) => {'description': c.description})
+            .toList(),
+      );
+
+      _saving = false;
+      notifyListeners();
+    } catch (e) {
+      _saving = false;
+      _error = e.toString();
+      notifyListeners();
+    }
+  }
+
+  // --- Computed ---
+
   bool get isDailyRoutineComplete {
     final allExercisesConfirmed = day.exercises.every(
       (ex) => _confirmed[ex.id] == true,
@@ -181,24 +272,24 @@ class RotinaViewModel extends ChangeNotifier {
   }
 }
 
-class _SetInput {
+class SetInput {
   final double weight;
   final int reps;
-  _SetInput({required this.weight, required this.reps});
+  SetInput({required this.weight, required this.reps});
 }
 
-class _FreeMealEntry {
+class FreeMealEntry {
   final String day;
   final String description;
-  const _FreeMealEntry({required this.day, required this.description});
+  const FreeMealEntry({required this.day, required this.description});
 
-  _FreeMealEntry copyWith({String? day, String? description}) => _FreeMealEntry(
+  FreeMealEntry copyWith({String? day, String? description}) => FreeMealEntry(
     day: day ?? this.day,
     description: description ?? this.description,
   );
 }
 
-class _CheatEntry {
+class CheatEntry {
   final String description;
-  const _CheatEntry({required this.description});
+  const CheatEntry({required this.description});
 }

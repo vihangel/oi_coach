@@ -1,15 +1,15 @@
 import 'dart:convert';
-import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 /// Central API client for communicating with the backend.
 class ApiClient {
-  // Use 10.0.2.2 for Android emulator, localhost for iOS simulator/desktop
-  static String get _baseUrl {
-    if (Platform.isAndroid) return 'http://10.0.2.2:3000/api';
-    return 'http://localhost:3000/api';
-  }
+  static const _productionUrl = 'https://oicoach-production.up.railway.app/api';
+  static const _localUrl = 'http://localhost:3000/api';
+
+  /// Use production URL in release mode, localhost in debug.
+  static String get _baseUrl => kReleaseMode ? _productionUrl : _localUrl;
 
   static final _client = http.Client();
 
