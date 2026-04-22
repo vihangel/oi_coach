@@ -34,6 +34,7 @@ async function getDb() {
       .collection("jobs")
       .createIndex({ status: 1, priority: -1, dueAt: 1 }),
     database.collection("supplies").createIndex({ title: 1 }),
+    database.collection("catalog_items").createIndex({ categoryId: 1 }),
   ]);
 
   return database;

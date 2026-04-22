@@ -12,6 +12,61 @@ function code(prefix) {
 }
 
 // ---------------------------------------------------------------------------
+// Catalog (protegido — admin)
+// ---------------------------------------------------------------------------
+
+router.post("/catalog", async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const now = new Date();
+    const item = {
+      categoryId: req.body.categoryId,
+      title: req.body.title,
+      description: req.body.description || "",
+      style: req.body.style || "",
+      priceCents: Number(req.body.priceCents),
+      imageTag: req.body.imageTag || "",
+      createdAt: now,
+      updatedAt: now,
+    };
+    const result = await db.collection("catalog_items").insertOne(item);
+    res.status(201).json({ ...item, _id: result.insertedId });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put("/catalog/:id", async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const { _id, ...fields } = req.body;
+    const result = await db
+      .collection("catalog_items")
+      .findOneAndUpdate(
+        { _id: new ObjectId(req.params.id) },
+        { $set: { ...fields, updatedAt: new Date() } },
+        { returnDocument: "after" },
+      );
+    if (!result) return res.status(404).json({ error: "Item nao encontrado" });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete("/catalog/:id", async (req, res, next) => {
+  try {
+    const db = await getDb();
+    await db
+      .collection("catalog_items")
+      .deleteOne({ _id: new ObjectId(req.params.id) });
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Dashboard (protegido)
 // ---------------------------------------------------------------------------
 

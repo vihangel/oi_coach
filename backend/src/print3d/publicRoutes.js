@@ -15,17 +15,26 @@ function code(prefix) {
 router.get("/customer-products", (_req, res) => {
   res.json([
     {
-      id: "keyring",
-      title: "Chaveiro personalizado",
-      description: "Nome, logo, personagem simples ou lembrancinha em lote.",
+      id: "cat_keyring",
+      title: "Chaveiros",
+      description: "Chaveiros personalizados com nome, logo ou personagem.",
       icon: "key",
       examples: ["brinde", "nome", "logo", "evento"],
       fromPriceCents: 1290,
       needsImage: false,
     },
     {
-      id: "decor",
-      title: "Encomenda decoracao",
+      id: "cat_miniature",
+      title: "Miniaturas",
+      description: "Bonecos, pecas de RPG e miniaturas detalhadas.",
+      icon: "miniature",
+      examples: ["boneco", "RPG", "tabuleiro", "personagem"],
+      fromPriceCents: 3490,
+      needsImage: false,
+    },
+    {
+      id: "cat_decor",
+      title: "Decoracao",
       description: "Pecas para mesa, parede, festas, nichos e ambientes.",
       icon: "decor",
       examples: ["mesa", "festa", "parede", "presente"],
@@ -33,8 +42,8 @@ router.get("/customer-products", (_req, res) => {
       needsImage: false,
     },
     {
-      id: "frame",
-      title: "Quadro ou placa",
+      id: "cat_sign",
+      title: "Placas e letreiros",
       description: "Placas com relevo, letreiros, logos e quadros decorativos.",
       icon: "frame",
       examples: ["logo 3D", "letreiro", "placa", "quadro"],
@@ -42,16 +51,17 @@ router.get("/customer-products", (_req, res) => {
       needsImage: false,
     },
     {
-      id: "image",
-      title: "Pedido com base em imagem",
-      description: "Envie uma foto ou referencia para avaliarmos a modelagem.",
-      icon: "image",
-      examples: ["foto", "desenho", "referencia", "print"],
-      fromPriceCents: 4590,
-      needsImage: true,
+      id: "cat_lamp",
+      title: "Luminarias",
+      description:
+        "Luminarias litofane, abajures geometricos e personalizados.",
+      icon: "lamp",
+      examples: ["litofane", "abajur", "luz", "foto"],
+      fromPriceCents: 5990,
+      needsImage: false,
     },
     {
-      id: "other",
+      id: "cat_other",
       title: "Outros",
       description:
         "Conte sua ideia em aberto: peca tecnica, reposicao ou presente.",
@@ -61,6 +71,26 @@ router.get("/customer-products", (_req, res) => {
       needsImage: false,
     },
   ]);
+});
+
+// ---------------------------------------------------------------------------
+// Catalog (publico)
+// ---------------------------------------------------------------------------
+
+router.get("/catalog", async (req, res, next) => {
+  try {
+    const db = await getDb();
+    const { categoryId } = req.query;
+    const filter = categoryId ? { categoryId } : {};
+    const items = await db
+      .collection("catalog_items")
+      .find(filter)
+      .sort({ title: 1 })
+      .toArray();
+    res.json(items);
+  } catch (error) {
+    next(error);
+  }
 });
 
 // ---------------------------------------------------------------------------
